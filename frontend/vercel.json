@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/aichesscoach/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/aichesscoach/(.*)", "destination": "/index.html" },
+    { "source": "/aichesscoach", "destination": "/index.html" }
+  ]
+}
