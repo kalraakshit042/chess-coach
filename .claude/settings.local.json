@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(echo $PATH)",
+      "Bash(brew install:*)",
+      "Bash(/opt/homebrew/bin/node --version)",
+      "Bash(/opt/homebrew/bin/npm --version)",
+      "Bash(/opt/homebrew/bin/npm install:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(source venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(python3 -c \":*)"
+    ]
+  }
+}

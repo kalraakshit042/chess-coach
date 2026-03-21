@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-chess-bg text-chess-text font-sans antialiased;
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-chess-bg;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-chess-muted rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-chess-accent;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-chess-surface border border-chess-border rounded-lg;
+  }
+
+  .btn-primary {
+    @apply bg-chess-accent hover:bg-amber-500 text-chess-bg font-semibold
+           px-6 py-3 rounded-lg transition-colors duration-150 cursor-pointer
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply border border-chess-border hover:border-chess-accent text-chess-text
+           hover:text-chess-accent px-4 py-2 rounded-lg transition-colors duration-150;
+  }
+
+  .verdict-strong {
+    @apply bg-green-900/30 text-green-400 border border-green-800;
+  }
+
+  .verdict-needs-work {
+    @apply bg-yellow-900/30 text-yellow-400 border border-yellow-800;
+  }
+
+  .verdict-weak {
+    @apply bg-red-900/30 text-red-400 border border-red-800;
+  }
+}
+
+/* Progress bar animation */
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    theme('colors.chess.muted') 25%,
+    theme('colors.chess.accent') 50%,
+    theme('colors.chess.muted') 75%
+  );
+  background-size: 200% auto;
+  animation: shimmer 2s linear infinite;
+}
+
+/* Chess piece knight icon */
+.knight-icon::before {
+  content: '♞';
+}
