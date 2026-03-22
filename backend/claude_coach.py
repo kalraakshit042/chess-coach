@@ -263,6 +263,21 @@ def _fallback_analysis(
     }
 
 
+def _mock_opening_analysis(opening_groups: dict) -> dict:
+    """Return instant fake analysis — used when MOCK_CLAUDE=true."""
+    return {
+        key: {
+            "accuracy_summary": "[MOCK] Accuracy summary placeholder.",
+            "tactical_summary": "[MOCK] Tactical summary placeholder.",
+            "positional_summary": "[MOCK] Positional summary placeholder.",
+            "recommendation": "[MOCK] Work on this opening.",
+            "key_moments": [],
+            "resources": [],
+        }
+        for key in opening_groups
+    }
+
+
 async def batch_analyze_openings(
     opening_groups: dict[str, list[Game]],
     stats_map: dict[str, OpeningStats],
@@ -272,6 +287,9 @@ async def batch_analyze_openings(
     color: str,
     progress_callback=None,
 ) -> dict[str, dict]:
+    if os.environ.get("MOCK_CLAUDE") == "true":
+        return _mock_opening_analysis(opening_groups)
+
     results = {}
     opening_keys = list(opening_groups.keys())
 

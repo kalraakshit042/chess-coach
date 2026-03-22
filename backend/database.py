@@ -1,10 +1,16 @@
 """
-Supabase integration — two-level cache:
+Supabase integration.
 
-Level 1: game_analysis  (keyed by game_id, permanent, stores Stockfish results)
-Level 2: analyses       (keyed by games_hash, TTL 1hr, stores full Claude output)
+Tables:
+  lichess_players   — lightweight player registry
+  all_games         — permanent game metadata (one row per Lichess game)
+  stockfish_analysis — engine results per game (acpl + key positions, both sides)
+  player_games      — join: username ↔ game_id + color played
+  analyses          — Claude output cache keyed by games_hash (24hr TTL)
+  opening_stats     — per-opening snapshots per analysis run (future trends)
 """
 import hashlib
+import logging
 import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -12,6 +18,8 @@ from typing import Optional
 from supabase import create_client, Client
 
 CACHE_TTL_HOURS = 24
+
+log = logging.getLogger("database")
 
 
 def _get_client() -> Client:
@@ -30,48 +38,119 @@ def compute_games_hash(game_ids: list[str]) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-# ── Level 1: Per-game Stockfish cache ─────────────────────────────────────────
+# ── all_games table ───────────────────────────────────────────────────────────
 
-def get_game_analyses_batch(game_ids: list[str]) -> dict[str, dict]:
+def get_existing_game_ids(game_ids: list[str]) -> set[str]:
+    """Return which of the given game_ids already exist in all_games."""
+    if not game_ids:
+        return set()
+    try:
+        client = _get_client()
+        resp = (
+            client.table("all_games")
+            .select("game_id")
+            .in_("game_id", game_ids)
+            .execute()
+        )
+        found = {row["game_id"] for row in (resp.data or [])}
+        log.info(f"[all_games] checked {len(game_ids)} game IDs → {len(found)} already exist")
+        return found
+    except Exception as e:
+        log.error(f"[all_games] get_existing_game_ids failed: {e}")
+        return set()
+
+
+def save_all_games_batch(rows: list[dict]) -> None:
+    """Upsert game metadata rows into all_games (no Stockfish data)."""
+    if not rows:
+        return
+    try:
+        client = _get_client()
+        client.table("all_games").upsert(rows, on_conflict="game_id").execute()
+        log.info(f"[all_games] saved {len(rows)} game metadata rows")
+    except Exception as e:
+        log.error(f"[all_games] save_all_games_batch failed: {e}")
+
+
+# ── stockfish_analysis table ──────────────────────────────────────────────────
+
+def get_stockfish_analyses(game_ids: list[str]) -> dict[str, dict]:
     """
-    Fetch cached Stockfish results for a batch of game IDs.
-    Returns dict mapping game_id -> {acpl, key_positions}.
+    Load Stockfish results for a batch of game IDs.
+    Returns dict: game_id → {acpl_white, acpl_black, key_positions_white, key_positions_black}
     """
     if not game_ids:
         return {}
     try:
         client = _get_client()
         resp = (
-            client.table("game_analysis")
-            .select("game_id, acpl, key_positions")
+            client.table("stockfish_analysis")
+            .select("game_id, acpl_white, acpl_black, key_positions_white, key_positions_black")
             .in_("game_id", game_ids)
             .execute()
         )
-        return {row["game_id"]: row for row in (resp.data or [])}
-    except Exception:
+        found = {row["game_id"]: row for row in (resp.data or [])}
+        log.info(f"[stockfish_analysis] loaded {len(found)} existing analyses")
+        return found
+    except Exception as e:
+        log.error(f"[stockfish_analysis] get_stockfish_analyses failed: {e}")
         return {}
 
 
-def save_game_analyses_batch(analyses: list[dict]) -> None:
-    """
-    Upsert per-game Stockfish results.
-    Each item: {game_id, acpl, key_positions (list of dicts)}.
-    """
-    if not analyses:
+def save_stockfish_analyses(rows: list[dict]) -> None:
+    """Upsert Stockfish analysis rows. Each row: {game_id, acpl_white, acpl_black, ...}"""
+    if not rows:
+        log.info("[stockfish_analysis] nothing new to save")
         return
     try:
         client = _get_client()
-        client.table("game_analysis").upsert(analyses, on_conflict="game_id").execute()
-    except Exception:
-        pass
+        client.table("stockfish_analysis").upsert(rows, on_conflict="game_id").execute()
+        log.info(f"[stockfish_analysis] saved {len(rows)} new analysis rows")
+    except Exception as e:
+        log.error(f"[stockfish_analysis] save_stockfish_analyses failed: {e}")
 
 
-# ── Level 2: Query-level Claude output cache ──────────────────────────────────
+# ── lichess_players table ─────────────────────────────────────────────────────
+
+def upsert_lichess_player(username: str) -> None:
+    """Track that we've fetched games for this Lichess username."""
+    try:
+        client = _get_client()
+        client.table("lichess_players").upsert(
+            {
+                "username": username.lower(),
+                "last_fetched_at": datetime.now(timezone.utc).isoformat(),
+            },
+            on_conflict="username",
+        ).execute()
+        log.info(f"[lichess_players] upserted: {username.lower()}")
+    except Exception as e:
+        log.error(f"[lichess_players] upsert_lichess_player failed: {e}")
+
+
+# ── player_games table ────────────────────────────────────────────────────────
+
+def save_player_games(entries: list[dict]) -> None:
+    """
+    Upsert entries into player_games.
+    Each entry: {username, game_id, color}.
+    """
+    if not entries:
+        return
+    try:
+        client = _get_client()
+        client.table("player_games").upsert(
+            entries, on_conflict="username,game_id"
+        ).execute()
+        log.info(f"[player_games] saved {len(entries)} entries")
+    except Exception as e:
+        log.error(f"[player_games] save_player_games failed: {e}")
+
+
+# ── analyses table (Claude output cache) ─────────────────────────────────────
 
 def get_cached_analysis(games_hash: str) -> Optional[dict]:
-    """
-    Return cached full analysis if it exists and is fresher than CACHE_TTL_HOURS.
-    """
+    """Return cached full Claude analysis if fresher than CACHE_TTL_HOURS."""
     try:
         client = _get_client()
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=CACHE_TTL_HOURS)).isoformat()
@@ -98,7 +177,7 @@ def save_analysis(
     games_hash: str,
     result: dict,
 ) -> Optional[str]:
-    """Save full analysis result + per-opening stats."""
+    """Save full Claude analysis result + per-opening stats snapshot."""
     try:
         client = _get_client()
         resp = (
