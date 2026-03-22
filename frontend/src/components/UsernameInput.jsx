@@ -4,13 +4,11 @@ export default function UsernameInput({ onAnalyze, isLoading }) {
   const [username, setUsername] = useState('')
   const [months, setMonths] = useState(12)
   const [speed, setSpeed] = useState('all')
-  const [testMode, setTestMode] = useState(false)
-
   function handleSubmit(e) {
     e.preventDefault()
     const trimmed = username.trim()
     if (!trimmed) return
-    onAnalyze(trimmed, months, speed, testMode)
+    onAnalyze(trimmed, months, speed)
   }
 
   return (
@@ -101,22 +99,6 @@ export default function UsernameInput({ onAnalyze, isLoading }) {
               <option value="bullet">Bullet only</option>
             </select>
           </div>
-
-          <label className="flex items-center gap-3 cursor-pointer select-none">
-            <div
-              onClick={() => setTestMode(v => !v)}
-              className={`relative w-9 h-5 rounded-full transition-colors duration-200
-                ${testMode ? 'bg-chess-accent' : 'bg-chess-muted'}`}
-            >
-              <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow
-                transition-transform duration-200
-                ${testMode ? 'translate-x-4' : 'translate-x-0.5'}`}
-              />
-            </div>
-            <span className="text-sm text-chess-text">
-              Test mode <span className="text-chess-muted">(20 games only, faster)</span>
-            </span>
-          </label>
 
           <button
             type="submit"

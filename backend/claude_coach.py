@@ -1,6 +1,8 @@
 """
-Claude API integration for chess coaching analysis.
-Uses claude-sonnet-4-20250514 to generate structured, specific coaching insights.
+Claude API integration for chess coaching.
+Two-phase:
+  1. generate_opening_knowledge() — one-time per ECO+color, cached in DB
+  2. coach_opening() — per-user, uses cached knowledge + player Stockfish data
 """
 import asyncio
 import json
@@ -9,8 +11,22 @@ from typing import Optional
 
 import anthropic
 
-from models import Game, KeyMoment, KeyPosition, OpeningAnalysis, OpeningStats, Resource
+import re
+
+from models import (
+    CoachingInsight, Game, KeyMoment, KeyPosition,
+    OpeningAnalysis, OpeningStats, Resource, StudyPlan,
+)
 from resources import get_resources_for_opening
+
+LICHESS_GAME_BASE = "https://lichess.org"
+
+# Matches standard SAN piece moves (Nf3, Bb5, Rxe5, Qxd4) and pawn captures (exd5, fxg6)
+# Excludes bare pawn pushes (e4, d5) which are too ambiguous in plain text
+_SAN_RE = re.compile(
+    r'(?<![a-zA-Z])([KQRBN][a-h1-8]?x?[a-h][1-8](?:=[QRBN])?[+#]?'
+    r'|[a-h]x[a-h][1-8](?:=[QRBN])?[+#]?)(?![a-zA-Z0-9])'
+)
 
 MODEL = "claude-sonnet-4-20250514"
 MAX_RETRIES = 3
@@ -98,6 +114,198 @@ def _format_eval_summary(avg_acpl: float) -> str:
         "Below average — significant inaccuracies present"
     )
     return f"Average Centipawn Loss (ACPL): {avg_acpl:.1f} — {label}"
+
+
+def build_move_index(game_analyses: list) -> dict[str, str]:
+    """
+    Build {move_san: game_id} from all games' move lists.
+    First game wins — used to hyperlink move mentions back to real games.
+    """
+    index: dict[str, str] = {}
+    for ga in game_analyses:
+        for move in (ga.game.moves or []):
+            clean = move.rstrip('+#')   # strip check/mate symbols for matching
+            if clean not in index:
+                index[clean] = ga.game.game_id
+    return index
+
+
+def annotate_moves(text: str, move_index: dict[str, str]) -> str:
+    """
+    Replace verified SAN move mentions with [move](lichess_url).
+    Unverified moves (Claude hallucinated / opening theory) are left as plain text.
+    """
+    def replace(m: re.Match) -> str:
+        raw = m.group(1)
+        clean = raw.rstrip('+#')
+        game_id = move_index.get(clean)
+        if game_id:
+            return f"[{raw}]({LICHESS_GAME_BASE}/{game_id})"
+        return raw  # not found in user's games — leave unlinked
+
+    return _SAN_RE.sub(replace, text)
+
+
+def _parse_json_response(text: str) -> dict:
+    """Strip markdown fences and parse JSON."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    return json.loads(text)
+
+
+async def generate_opening_knowledge(opening_name: str, eco: str, color: str) -> dict:
+    """
+    One-time generation of opening theory knowledge for a specific ECO + color.
+    Cached in Supabase — only called when missing from DB.
+    Returns dict: {strategic_goal, key_plans, transition_point, tactical_themes, common_mistakes}
+    """
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+    prompt = f"""You are a chess expert. Generate a concise opening knowledge guide for:
+Opening: {opening_name} ({eco}), played as {color}.
+
+Return ONLY a JSON object with these exact fields:
+{{
+  "strategic_goal": "What this side is trying to achieve — 2 sentences covering main ideas and pawn structure goals",
+  "key_plans": ["plan 1", "plan 2", "plan 3"],
+  "transition_point": "At what move / position does opening theory typically end and the middlegame begin — 1-2 sentences",
+  "tactical_themes": ["theme 1", "theme 2"],
+  "common_mistakes": ["most common mistake 1", "most common mistake 2", "most common mistake 3"]
+}}
+
+Be specific to this exact opening. Name concrete moves and squares where relevant."""
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = await asyncio.to_thread(
+                client.messages.create,
+                model=MODEL,
+                max_tokens=600,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return _parse_json_response(resp.content[0].text)
+        except Exception:
+            if attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(RETRY_BASE_DELAY * (2 ** attempt))
+
+    # Minimal fallback so the flow never breaks
+    return {
+        "strategic_goal": f"Understand the key ideas of the {opening_name} as {color}.",
+        "key_plans": ["Control the center", "Develop pieces", "Castle to safety"],
+        "transition_point": "Opening theory typically ends around move 10-15.",
+        "tactical_themes": ["Pin", "Fork"],
+        "common_mistakes": ["Premature pawn advances", "Ignoring opponent threats"],
+    }
+
+
+async def coach_opening(
+    opening_name: str,
+    eco: str,
+    color: str,
+    knowledge: dict,
+    diagnosis,          # CoachingDiagnosis
+    avg_acpl: Optional[float],
+    games_analysed: int,
+) -> CoachingInsight:
+    """
+    Per-user coaching using cached opening knowledge + Stockfish diagnosis.
+    Returns structured CoachingInsight with 4 categories.
+    """
+    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+    # Format opening knowledge
+    key_plans = "\n".join(f"  - {p}" for p in (knowledge.get("key_plans") or []))
+    common_mistakes = "\n".join(f"  - {m}" for m in (knowledge.get("common_mistakes") or []))
+    tactical_themes = ", ".join(knowledge.get("tactical_themes") or [])
+
+    # Format critical position
+    cp = diagnosis.critical_position
+    if cp:
+        swing_pawns = abs((cp.eval_after or 0) - (cp.eval_before or 0)) / 100
+        critical_text = (
+            f"FEN: {cp.fen}\n"
+            f"Played: {cp.move_played_san} (eval {cp.eval_before/100:.1f} → {cp.eval_after/100:.1f} pawns, lost {swing_pawns:.1f} pawns)\n"
+            f"Stockfish best: {cp.best_move_san or 'unknown'}"
+        )
+    else:
+        critical_text = "No critical position identified."
+
+    prompt = f"""You are an expert chess coach (2500+ rated). Analyse this player's performance.
+Address the player directly as "you" throughout. Never say "the player".
+
+[OPENING KNOWLEDGE: {opening_name} ({eco}) as {color}]
+Strategic goal: {knowledge.get('strategic_goal', '')}
+Key plans:
+{key_plans}
+Theory ends: {knowledge.get('transition_point', '')}
+Tactical themes: {tactical_themes}
+Common mistakes in this opening:
+{common_mistakes}
+
+[THIS PLAYER'S DATA]
+Games analysed: {games_analysed}
+Record: {diagnosis.wins}W / {diagnosis.draws}D / {diagnosis.losses}L
+Average ACPL: {avg_acpl or 'N/A'}
+Mistake pattern: {diagnosis.outcome_type} — problems cluster in the {diagnosis.dominant_phase} (avg move {diagnosis.avg_mistake_move or '?'})
+Win ACPL: {diagnosis.win_avg_acpl or 'N/A'} | Loss ACPL: {diagnosis.loss_avg_acpl or 'N/A'}
+
+[WORST POSITION ACROSS ALL GAMES]
+{critical_text}
+
+IMPORTANT: Do NOT restate any numbers (ACPL, blunder counts, win rates). Those are already shown. Focus entirely on chess — strategy, piece placement, pawn structure, specific moves and squares. Be a coach, not a calculator.
+
+Return ONLY a JSON object with these exact fields:
+{{
+  "whats_wrong": "2-3 sentences in chess terms only — no numbers. Reference the opening's strategic goals and where this player deviates. Name specific moves, squares, or pieces.",
+  "critical_moment": "2-3 sentences. Explain the worst position: why the played move loses, what the best move achieves, what chess concept this illustrates.",
+  "pattern": "2 sentences. Name the underlying chess weakness — calculation depth, structural misunderstanding, theory gap, or piece coordination. Be precise.",
+  "study_plan": {{
+    "focus": "tactics OR opening_theory OR positional OR endgame",
+    "title": "Specific study topic title (e.g. 'Nd5 sacrifice patterns in open games')",
+    "action": "One concrete, immediate action — specific line, puzzle theme, concept, or game to study",
+    "lichess_hint": "Lichess puzzle theme name or study search term (e.g. 'discoveredAttack' or 'Danish Gambit plans')"
+  }}
+}}"""
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            resp = await asyncio.to_thread(
+                client.messages.create,
+                model=MODEL,
+                max_tokens=800,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            parsed = _parse_json_response(resp.content[0].text)
+            sp = parsed.get("study_plan", {})
+            return CoachingInsight(
+                whats_wrong=parsed.get("whats_wrong", ""),
+                critical_moment=parsed.get("critical_moment") or None,
+                pattern=parsed.get("pattern", ""),
+                study_plan=StudyPlan(
+                    focus=sp.get("focus", "positional"),
+                    title=sp.get("title", ""),
+                    action=sp.get("action", ""),
+                    lichess_hint=sp.get("lichess_hint") or None,
+                ),
+            )
+        except Exception:
+            if attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(RETRY_BASE_DELAY * (2 ** attempt))
+
+    # Fallback
+    return CoachingInsight(
+        whats_wrong=f"Unable to generate coaching for {opening_name} at this time.",
+        critical_moment=None,
+        pattern="Review your games manually to identify recurring patterns.",
+        study_plan=StudyPlan(
+            focus=diagnosis.outcome_type,
+            title=f"Study {opening_name} plans",
+            action=f"Play through master games in the {opening_name} as {color}.",
+            lichess_hint=opening_name,
+        ),
+    )
 
 
 async def analyze_opening(

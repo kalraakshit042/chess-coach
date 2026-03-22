@@ -96,3 +96,83 @@ class AnalyzeRequest(BaseModel):
     months: int = 12
     speed: str = "all"  # "all", "rapid", "blitz", "bullet"
     test_mode: bool = False  # if True, cap at 10 games
+
+
+class OverviewRequest(BaseModel):
+    username: str
+    months: int = 12
+    speed: str = "all"
+
+
+class OpeningOverview(BaseModel):
+    key: str                              # e.g. "B20 Sicilian Defense"
+    name: str
+    eco: str
+    color: str                            # "white" or "black"
+    games: int
+    wins: int
+    draws: int
+    losses: int
+    avg_opponent_rating: Optional[float] = None
+    acpl: Optional[float] = None          # null if not yet analysed
+    estimated_analysis_seconds: int = 0  # uncached_games * 4
+
+
+class OverviewResponse(BaseModel):
+    username: str
+    total_games: int
+    white_games: int
+    black_games: int
+    white_openings: list[OpeningOverview]
+    black_openings: list[OpeningOverview]
+    user_rating: Optional[int] = None
+
+
+class AnalyseOpeningRequest(BaseModel):
+    username: str
+    months: int = 12
+    speed: str = "all"
+    opening_key: str   # e.g. "B20 Sicilian Defense"
+    eco: str
+    opening_name: str
+    color: str         # "white" or "black"
+
+
+class StudyPlan(BaseModel):
+    focus: str                          # "tactics" | "opening_theory" | "positional" | "endgame"
+    title: str
+    action: str                         # concrete thing to do
+    lichess_hint: Optional[str] = None  # puzzle theme or study search term
+
+
+class CoachingInsight(BaseModel):
+    whats_wrong: str
+    critical_moment: Optional[str] = None
+    pattern: str
+    study_plan: StudyPlan
+
+
+class CoachingDiagnosis(BaseModel):
+    outcome_type: str           # "opening_theory" | "tactics" | "positional_plans" | "endgame_technique"
+    outcome_label: str          # "Study Opening Theory" etc
+    outcome_explanation: str    # specific paragraph
+    dominant_phase: str         # "opening" | "middlegame" | "endgame"
+    avg_mistake_move: Optional[float] = None
+    phase_distribution: dict = {}   # {"opening": 2, "middlegame": 8, "endgame": 1}
+    wins: int = 0
+    losses: int = 0
+    draws: int = 0
+    win_avg_acpl: Optional[float] = None
+    loss_avg_acpl: Optional[float] = None
+    critical_position: Optional[KeyPosition] = None
+
+
+class OpeningAnalysisResult(BaseModel):
+    opening_name: str
+    eco: str
+    color: str
+    games_analysed: int
+    avg_acpl: Optional[float] = None
+    key_positions: list[KeyPosition] = []
+    diagnosis: Optional[CoachingDiagnosis] = None
+    insight: Optional[CoachingInsight] = None

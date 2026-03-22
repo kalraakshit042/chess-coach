@@ -1,23 +1,16 @@
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
-/**
- * Analyze a Lichess user's games with streaming progress updates.
- * @param {string} username
- * @param {number} months
- * @param {function} onProgress - called with progress events
- * @param {function} onComplete - called with the final analysis result
- * @param {function} onError - called with error message string
- * @returns {function} cancel - call to abort the request
- */
-export function analyzeWithStream(username, months = 12, speed = 'all', testMode = false, onProgress, onComplete, onError) {
+// ── SSE helper ────────────────────────────────────────────────────────────────
+
+function readSSEStream(url, body, onProgress, onComplete, onError) {
   const controller = new AbortController()
 
   async function run() {
     try {
-      const response = await fetch(`${API_BASE}/analyze/stream`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, months, speed, test_mode: testMode }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       })
 
@@ -37,7 +30,7 @@ export function analyzeWithStream(username, months = 12, speed = 'all', testMode
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
-        buffer = lines.pop() // keep incomplete line
+        buffer = lines.pop()
 
         let eventType = null
         for (const line of lines) {
@@ -73,9 +66,67 @@ export function analyzeWithStream(username, months = 12, speed = 'all', testMode
   return () => controller.abort()
 }
 
+// ── Phase 1: Overview ─────────────────────────────────────────────────────────
+
 /**
- * Non-streaming analyze endpoint (fallback).
+ * Fetch opening overview for a user (fast — no Stockfish).
+ * Returns the full OverviewResponse object.
  */
+export async function fetchOverview(username, months = 12, speed = 'all') {
+  const response = await fetch(`${API_BASE}/overview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, months, speed }),
+  })
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ detail: 'Request failed' }))
+    throw new Error(err.detail || 'Failed to fetch overview')
+  }
+
+  return response.json()
+}
+
+// ── Phase 2: Analyse one opening ──────────────────────────────────────────────
+
+/**
+ * Run Stockfish on all games in one opening. SSE stream.
+ * @returns {function} cancel - call to abort
+ */
+export function analyseOpening(
+  username, months, speed,
+  openingKey, eco, openingName, color,
+  onProgress, onComplete, onError,
+) {
+  return readSSEStream(
+    `${API_BASE}/analyse-opening`,
+    {
+      username,
+      months,
+      speed,
+      opening_key: openingKey,
+      eco,
+      opening_name: openingName,
+      color,
+    },
+    onProgress,
+    onComplete,
+    onError,
+  )
+}
+
+// ── Legacy stream endpoint (kept for fallback) ────────────────────────────────
+
+export function analyzeWithStream(username, months = 12, speed = 'all', onProgress, onComplete, onError) {
+  return readSSEStream(
+    `${API_BASE}/analyze/stream`,
+    { username, months, speed },
+    onProgress,
+    onComplete,
+    onError,
+  )
+}
+
 export async function analyze(username, months = 12, speed = 'all') {
   const response = await fetch(`${API_BASE}/analyze`, {
     method: 'POST',
@@ -91,6 +142,8 @@ export async function analyze(username, months = 12, speed = 'all') {
   return response.json()
 }
 
+// ── Formatting utils ──────────────────────────────────────────────────────────
+
 export function getVerdictClass(verdict) {
   switch (verdict) {
     case 'Strong': return 'verdict-strong'
@@ -104,4 +157,19 @@ export function formatWinRate(wins, draws, losses) {
   const total = wins + draws + losses
   if (total === 0) return '0%'
   return `${Math.round((wins / total) * 100)}%`
+}
+
+export function formatEstimatedTime(seconds) {
+  if (seconds <= 0) return 'Instant (cached)'
+  if (seconds < 60) return `~${seconds}s`
+  const mins = Math.round(seconds / 60)
+  return `~${mins} min`
+}
+
+export function acplColor(acpl) {
+  if (acpl === null || acpl === undefined) return 'text-chess-muted'
+  if (acpl < 30)  return 'text-green-400'
+  if (acpl < 60)  return 'text-chess-accent'   // amber — Good
+  if (acpl < 100) return 'text-yellow-400'      // Fair
+  return 'text-red-400'                         // Poor
 }

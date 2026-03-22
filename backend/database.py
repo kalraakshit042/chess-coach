@@ -110,6 +110,43 @@ def save_stockfish_analyses(rows: list[dict]) -> None:
         log.error(f"[stockfish_analysis] save_stockfish_analyses failed: {e}")
 
 
+def get_games_for_opening(username: str, eco: str, opening_name: str, color: str) -> list[dict]:
+    """
+    Load all game rows for a specific user + opening from all_games via player_games.
+    Returns list of all_games rows (with game metadata).
+    """
+    try:
+        client = _get_client()
+        # Step 1: get all game_ids for this user + color
+        pg_resp = (
+            client.table("player_games")
+            .select("game_id")
+            .eq("username", username.lower())
+            .eq("color", color)
+            .execute()
+        )
+        game_ids = [r["game_id"] for r in (pg_resp.data or [])]
+        if not game_ids:
+            log.info(f"[player_games] no games found for {username}/{color}")
+            return []
+
+        # Step 2: filter by eco + opening_name
+        ag_resp = (
+            client.table("all_games")
+            .select("*")
+            .in_("game_id", game_ids)
+            .eq("eco", eco)
+            .eq("opening_name", opening_name)
+            .execute()
+        )
+        rows = ag_resp.data or []
+        log.info(f"[all_games] found {len(rows)} games for {username}/{opening_name}/{color}")
+        return rows
+    except Exception as e:
+        log.error(f"[all_games] get_games_for_opening failed: {e}")
+        return []
+
+
 # ── lichess_players table ─────────────────────────────────────────────────────
 
 def upsert_lichess_player(username: str) -> None:
@@ -222,6 +259,48 @@ def save_analysis(
         return analysis_id
     except Exception:
         return None
+
+
+# ── opening_knowledge table ───────────────────────────────────────────────────
+
+def get_opening_knowledge(eco: str, color: str) -> Optional[dict]:
+    """Return cached opening knowledge for this ECO+color, or None if not yet generated."""
+    try:
+        client = _get_client()
+        resp = (
+            client.table("opening_knowledge")
+            .select("strategic_goal, key_plans, transition_point, tactical_themes, common_mistakes")
+            .eq("eco", eco)
+            .eq("color", color)
+            .limit(1)
+            .execute()
+        )
+        if resp.data:
+            log.info(f"[opening_knowledge] cache hit: {eco}/{color}")
+            return resp.data[0]
+        log.info(f"[opening_knowledge] cache miss: {eco}/{color}")
+        return None
+    except Exception as e:
+        log.error(f"[opening_knowledge] get failed: {e}")
+        return None
+
+
+def save_opening_knowledge(eco: str, opening_name: str, color: str, knowledge: dict) -> None:
+    """Upsert generated opening knowledge. knowledge = {strategic_goal, key_plans, ...}"""
+    try:
+        client = _get_client()
+        client.table("opening_knowledge").upsert(
+            {
+                "eco": eco,
+                "opening_name": opening_name,
+                "color": color,
+                **knowledge,
+            },
+            on_conflict="eco,color",
+        ).execute()
+        log.info(f"[opening_knowledge] saved: {eco}/{color} ({opening_name})")
+    except Exception as e:
+        log.error(f"[opening_knowledge] save failed: {e}")
 
 
 # ── History & Trends ──────────────────────────────────────────────────────────
