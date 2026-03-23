@@ -139,6 +139,18 @@ export default function App() {
           onBack={overviewData ? handleBackToOverview : null}
         />
       )}
+
+      <footer className="text-center py-4 text-chess-muted text-sm px-4">
+        Built by{' '}
+        <a
+          href="https://www.akshitkalra.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-chess-accent hover:underline"
+        >
+          Akshit Kalra
+        </a>
+      </footer>
     </div>
   )
 }
