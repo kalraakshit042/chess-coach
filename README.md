@@ -145,4 +145,4 @@ Analysis powered by Claude AI and Stockfish. For educational purposes only. Resu
 
 [![Anthropic Claude](https://img.shields.io/badge/Built%20with-Claude%20API-orange?style=flat-square)](https://docs.anthropic.com)
 
-Licensed under MIT.
+Built by [Akshit Kalra](https://www.akshitkalra.com/)
