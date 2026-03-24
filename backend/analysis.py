@@ -23,10 +23,18 @@ STOCKFISH_PATHS = [
 
 
 def find_stockfish() -> str | None:
+    import logging
+    _log = logging.getLogger("analysis")
     for path in STOCKFISH_PATHS:
         if os.path.isfile(path) and os.access(path, os.X_OK):
+            _log.info("Stockfish found at: %s", path)
             return path
-    return shutil.which("stockfish")
+    result = shutil.which("stockfish")
+    if result:
+        _log.info("Stockfish found via PATH: %s", result)
+    else:
+        _log.error("Stockfish not found. Tried paths: %s. shutil.which returned None.", STOCKFISH_PATHS)
+    return result
 
 _find_stockfish = find_stockfish  # internal alias
 

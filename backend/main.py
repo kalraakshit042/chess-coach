@@ -223,6 +223,7 @@ async def analyse_opening(request: AnalyseOpeningRequest):
             if uncached_rows:
                 sf_path = find_stockfish()
                 if not sf_path:
+                    log.error("Stockfish not found. Searched: %s", find_stockfish.__doc__ or "see analysis.py")
                     yield _sse_event("error", {"message": "Stockfish not found on this server."})
                     return
 
