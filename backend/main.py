@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import json
 
 load_dotenv()
@@ -102,7 +102,10 @@ async def overview(request: OverviewRequest):
         request.username, months=request.months, speed=request.speed
     )
     if not games:
-        raise HTTPException(status_code=404, detail=f"No rated games found for '{request.username}'.")
+        return JSONResponse(
+            status_code=404,
+            content={"detail": f"No rated games found for '{request.username}'."},
+        )
 
     upsert_lichess_player(request.username)
 
