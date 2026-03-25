@@ -2,7 +2,7 @@
 
 **AI-powered opening repertoire analysis for Lichess players — powered by Claude and Stockfish.**
 
-> Live at [projects.akshitkalra.com/aichesscoach](https://projects.akshitkalra.com/aichesscoach)
+> Live at [akshitkalra.com/aichesscoach](https://akshitkalra.com/aichesscoach)
 
 ![Chess Coach Screenshot](docs/landing-page.png)
 
@@ -32,7 +32,10 @@ Serious improvers with hundreds of games on Lichess have no easy way to get **op
 
 Chess Coach bridges that gap: enter your Lichess username, and it analyzes your entire opening repertoire with engine precision and natural language coaching.
 
----
+## Who this is for
+
+> Lichess players with a meaningful game history who want repertoire-level feedback across their most-played openings, not just move-by-move engine evaluations from individual games.
+
 
 ## The Solution
 
@@ -60,7 +63,6 @@ Stockfish analysis is expensive (several seconds per game at depth 15). Caching 
 **What I cut:**
 - No user accounts — just enter a username and go. Zero friction.
 - No real-time game analysis — repertoire-level insights are more valuable than move-by-move commentary (Lichess already does that).
-- No user accounts or payment — zero friction. Enter a username and go.
 
 ---
 
@@ -113,7 +115,6 @@ Stockfish analysis is expensive (several seconds per game at depth 15). Caching 
 - Coaching quality depends on opening sample size — openings with fewer than 3 games are filtered out
 - Repertoire-level feedback is more useful than one-off game review, but it can miss highly specific tactical lessons from individual games
 - Claude explains engine output well, but strong recommendations still depend on accurate Stockfish diagnosis
-- Benchmark and pricing data can drift as providers update models
 
 ---
 
