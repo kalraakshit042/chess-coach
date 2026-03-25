@@ -4,7 +4,23 @@
 
 > Live at [projects.akshitkalra.com/aichesscoach](https://projects.akshitkalra.com/aichesscoach)
 
-![Chess Coach Screenshot](docs/Screenshot.png)
+![Chess Coach Screenshot](docs/landing-page.png)
+
+---
+
+## Example
+
+**Input:** Lichess username `noob042`, Rapid games, last 12 months
+
+**Opening surfaced:** Sicilian Defense: Wing Gambit (10 games as White)
+
+**Diagnosis:**
+
+![Deep dive analysis showing what's going wrong](docs/example-diagnosis.png)
+
+**Coaching recommendation:**
+
+![Tactical study recommendation](docs/example-recommendation.png)
 
 ---
 
@@ -12,7 +28,7 @@
 
 Chess engines like Stockfish will tell you move 17 was a blunder. They won't tell you *why* you keep blundering in the same opening, what positional themes you're missing, or what to study next.
 
-Club players (1000-2000 Elo) have hundreds of games on Lichess but no easy way to get **opening-level coaching** — the kind of feedback that says "you consistently mishandle the pawn break in the Caro-Kann" rather than "Nf3 was -1.2."
+Serious improvers with hundreds of games on Lichess have no easy way to get **opening-level coaching** — the kind of feedback that says "you consistently mishandle the pawn break in the Caro-Kann" rather than "Nf3 was -1.2."
 
 Chess Coach bridges that gap: enter your Lichess username, and it analyzes your entire opening repertoire with engine precision and natural language coaching.
 
@@ -44,7 +60,7 @@ Stockfish analysis is expensive (several seconds per game at depth 15). Caching 
 **What I cut:**
 - No user accounts — just enter a username and go. Zero friction.
 - No real-time game analysis — repertoire-level insights are more valuable than move-by-move commentary (Lichess already does that).
-- No paid tier — this is a portfolio project, not a business. `allow_origins=["*"]` and no auth.
+- No user accounts or payment — zero friction. Enter a username and go.
 
 ---
 
@@ -88,6 +104,16 @@ Stockfish analysis is expensive (several seconds per game at depth 15). Caching 
 **LLM prompting is engineering, not magic.** The 2-phase approach (opening knowledge → coaching with diagnosis) produces dramatically better output than a single "analyze this opening" prompt. Giving Claude the Stockfish diagnosis as structured input prevents hallucinated analysis.
 
 **Cache everything that's deterministic.** Stockfish evaluation of the same game at the same depth will always produce the same result. Caching it in Supabase cut repeat analysis time from minutes to milliseconds.
+
+---
+
+## Known Limitations
+
+- Only public Lichess accounts are supported (Lichess API limitation)
+- Coaching quality depends on opening sample size — openings with fewer than 3 games are filtered out
+- Repertoire-level feedback is more useful than one-off game review, but it can miss highly specific tactical lessons from individual games
+- Claude explains engine output well, but strong recommendations still depend on accurate Stockfish diagnosis
+- Benchmark and pricing data can drift as providers update models
 
 ---
 
