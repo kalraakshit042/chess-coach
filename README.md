@@ -4,7 +4,7 @@
 
 > Live at [projects.akshitkalra.com/aichesscoach](https://projects.akshitkalra.com/aichesscoach)
 
-![Chess Coach Screenshot](docs/Screenshot.png)
+![Chess Coach Screenshot](docs/landing-page.png)
 
 ---
 
@@ -12,11 +12,15 @@
 
 **Input:** Lichess username `noob042`, Rapid games, last 12 months
 
-**Opening surfaced:** Caro-Kann Defense (19 games as White)
+**Opening surfaced:** Sicilian Defense: Wing Gambit (10 games as White)
 
-**Diagnosis:** Frequent tactical losses after early queenside expansion. Weak handling of central tension in positions where Black delays ...c5.
+**Diagnosis:**
 
-**Coaching recommendation:** Delay queenside pawn advances until development is complete. Study 3 model Caro-Kann games focused on ...c5 timing. Review tactical motifs after White overextends in the center.
+![Deep dive analysis showing what's going wrong](docs/example-diagnosis.png)
+
+**Coaching recommendation:**
+
+![Tactical study recommendation](docs/example-recommendation.png)
 
 ---
 
