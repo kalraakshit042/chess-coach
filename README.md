@@ -4,7 +4,7 @@
 
 > Live at [projects.akshitkalra.com/aichesscoach](https://projects.akshitkalra.com/aichesscoach)
 
-![Chess Coach Screenshot](docs/screenshot.png)
+![Chess Coach Screenshot](docs/Screenshot.png)
 
 ---
 
