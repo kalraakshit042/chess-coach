@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { Analytics } from '@vercel/analytics/react'
 import UsernameInput from './components/UsernameInput'
 import OverviewPage from './components/OverviewPage'
 import AnalysisResultPage from './components/AnalysisResultPage'
@@ -151,6 +152,7 @@ export default function App() {
           Akshit Kalra
         </a>
       </footer>
+      <Analytics />
     </div>
   )
 }
