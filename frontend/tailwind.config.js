@@ -12,12 +12,12 @@ export default {
           light: '#eeeed2',
         },
         chess: {
-          bg: '#161512',
-          surface: '#1e1d1a',
-          border: '#2d2b28',
-          muted: '#3d3b37',
-          text: '#bababa',
-          accent: '#c0a060',
+          bg: '#0f1419',
+          surface: '#1a2332',
+          border: '#2a3a4e',
+          muted: '#8faabe',
+          text: '#e7ecef',
+          accent: '#6096ba',
         }
       },
       fontFamily: {
